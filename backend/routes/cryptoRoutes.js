@@ -184,7 +184,7 @@ router.post("/portfolio/add", authenticateToken, async (req, res) => {
   try {
     const [existing] = await db.query("SELECT * FROM portfolio WHERE user_id = ? AND asset_id = ?", [user_id, asset_id]);
     if (existing.length > 0) return res.status(409).json({ success: false, error: "Crypto already in portfolio." });
-
+    console.log("🧾 Adding to portfolio:", { user_id, asset_id, purchase_price, purchase_date, quantity });
     await db.query(
       "INSERT INTO portfolio (user_id, asset_id, purchase_price, purchase_date, quantity) VALUES (?, ?, ?, ?, ?)",
       [user_id, asset_id, purchase_price, purchase_date, quantity]
@@ -193,7 +193,7 @@ router.post("/portfolio/add", authenticateToken, async (req, res) => {
 
     res.status(200).json({ success: true, message: "Crypto added to portfolio." });
   } catch (error) {
-    console.error("Database Error:", error);
+    console.error("🔥 Database Error (Add to Portfolio):", error); // Add this
     res.status(500).json({ success: false, error: "Failed to add crypto to portfolio." });
   }
 });
@@ -282,6 +282,27 @@ router.delete("/portfolio/remove", authenticateToken, async (req, res) => {
 // Health check route
 router.get("/health", (req, res) => {
   res.status(200).json({ success: true, message: "API is running fine!" });
+});
+router.get("/historical/:asset_id", authenticateToken, async (req, res) => {
+  const { asset_id } = req.params;
+  const { period = "1DAY", limit = 30 } = req.query;
+  
+  try {
+    const response = await axios.get(
+      `https://rest.coinapi.io/v1/ohlcv/${asset_id}/USD/history?period_id=${period}&limit=${limit}`,
+      { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
+    );
+
+    const historicalData = response.data.map(item => ({
+      time_period_start: item.time_period_start,
+      price_close: item.price_close
+    }));
+
+    res.status(200).json({ success: true, data: historicalData });
+  } catch (error) {
+    console.error("Error fetching historical data:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch historical data." });
+  }
 });
 
 module.exports = router;

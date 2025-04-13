@@ -71,7 +71,7 @@ export default function PortfolioPage() {
         throw new Error("Authentication token not found")
       }
 
-      const response = await fetch("/api/crypto/portfolio", {
+      const response = await fetch("http://localhost:5001/api/crypto/portfolio", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -82,7 +82,23 @@ export default function PortfolioPage() {
       }
 
       const data = await response.json()
-      setPortfolio(data)
+      console.log("📦 Portfolio response:", data)
+      if (Array.isArray(data)) {
+        setPortfolio(data)
+      } else if (Array.isArray(data.data)) {
+        // Parse numbers safely
+        const parsed = data.data.map((item: { purchase_price: string; quantity: string; current_price: string | null; profit_loss: string | null }) => ({
+          ...item,
+          purchase_price: parseFloat(item.purchase_price),
+          quantity: parseFloat(item.quantity),
+          current_price: item.current_price !== null ? parseFloat(item.current_price) : 0,
+          profit_loss: item.profit_loss !== null ? parseFloat(item.profit_loss) : 0,
+        }))
+        setPortfolio(parsed)
+      } else {
+        console.error("❌ Unexpected portfolio response format:", data)
+        setPortfolio([])
+      }
     } catch (err) {
       console.error("Error fetching portfolio:", err)
       setError(err instanceof Error ? err.message : "An unknown error occurred")
@@ -106,7 +122,7 @@ export default function PortfolioPage() {
         throw new Error("Authentication token not found")
       }
 
-      const response = await fetch("/api/crypto/portfolio/add", {
+      const response = await fetch("http://localhost:5001/api/crypto/portfolio/add", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -160,7 +176,7 @@ export default function PortfolioPage() {
         throw new Error("Authentication token not found")
       }
 
-      const response = await fetch("/api/crypto/portfolio/remove", {
+      const response = await fetch("http://localhost:5001/api/crypto/portfolio/remove", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -443,7 +459,7 @@ export default function PortfolioPage() {
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                        <Tooltip formatter={(value) => typeof value === 'number' ? `$${value.toFixed(2)}` : `$${value}`} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
