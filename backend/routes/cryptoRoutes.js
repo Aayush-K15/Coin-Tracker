@@ -285,23 +285,77 @@ router.get("/health", (req, res) => {
 });
 router.get("/historical/:asset_id", authenticateToken, async (req, res) => {
   const { asset_id } = req.params;
-  const { period = "1DAY", limit = 30 } = req.query;
-  
+  const { period = "1DAY", limit = 30, exchange = "COINBASE" } = req.query;
+
   try {
+    // Convert asset to CoinAPI's symbol format
+    const symbol_id = `${exchange}_SPOT_${asset_id}_USD`;
+    
+    // Calculate time period
+    const periods = {
+      "1H": "1HRS",
+      "1DAY": "1DAY",
+      "1W": "1WEEK",
+      "1M": "1MTH",
+      "1Y": "1YEAR"
+    };
+    
+    const period_id = periods[period] || "1DAY";
+    const daysBack = period === "1Y" ? 365 : period === "1M" ? 30 : period === "1W" ? 7 : 1;
+    const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+
     const response = await axios.get(
-      `https://rest.coinapi.io/v1/ohlcv/${asset_id}/USD/history?period_id=${period}&limit=${limit}`,
-      { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
+      `https://rest.coinapi.io/v1/ohlcv/${symbol_id}/history`,
+      {
+        params: {
+          period_id: period_id,
+          time_start: startDate,
+          limit: limit,
+          include_empty_items: false
+        },
+        headers: { 
+          "X-CoinAPI-Key": process.env.COINAPI_KEY,
+          "Accept-Encoding": "gzip"
+        }
+      }
     );
 
+    if (!response.data || response.data.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: "No historical data found for this asset" 
+      });
+    }
+
     const historicalData = response.data.map(item => ({
-      time_period_start: item.time_period_start,
-      price_close: item.price_close
+      time: item.time_period_start,
+      open: item.price_open,
+      high: item.price_high,
+      low: item.price_low,
+      close: item.price_close,
+      volume: item.volume_traded
     }));
 
     res.status(200).json({ success: true, data: historicalData });
+
   } catch (error) {
-    console.error("Error fetching historical data:", error);
-    res.status(500).json({ success: false, error: "Failed to fetch historical data." });
+    console.error("Historical Data Error:", {
+      message: error.message,
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    let errorMessage = "Failed to fetch historical data";
+    if (error.response?.status === 404) {
+      errorMessage = "This asset/exchange combination not found. Try different exchange.";
+    }
+    
+    res.status(error.response?.status || 500).json({ 
+      success: false, 
+      error: errorMessage,
+      hint: "Try adding ?exchange=COINBASE or ?exchange=BITSTAMP to your request"
+    });
   }
 });
 
