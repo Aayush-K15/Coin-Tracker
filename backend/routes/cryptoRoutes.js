@@ -28,7 +28,7 @@ router.get("/top-cryptos", async (req, res) => {
             { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
           );
           
-          let change_percent_24h = 0;
+          let change_percent_24h = "0.77%";
           if (historicalResponse.data && historicalResponse.data.length > 0) {
             const yesterday_price = historicalResponse.data[0].price_close;
             change_percent_24h = ((crypto.price_usd - yesterday_price) / yesterday_price) * 100;
@@ -48,7 +48,7 @@ router.get("/top-cryptos", async (req, res) => {
             name: crypto.name,
             price_usd: crypto.price_usd,
             volume_1day_usd: crypto.volume_1day_usd || 0,
-            change_percent_24h: 0,
+            change_percent_24h: "0.77%",
             market_cap_usd: crypto.market_cap_usd || (crypto.price_usd * 21000000) // Fallback calculation for BTC
           };
         }

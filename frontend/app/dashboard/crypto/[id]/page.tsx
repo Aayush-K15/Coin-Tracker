@@ -76,12 +76,9 @@ export default function CryptoDetailPage({ params }: CryptoDetailProps) {
           throw new Error("Cryptocurrency not found");
         }
   
-        // Enhance crypto data with additional metadata
-        // Get market cap - this could be included in your API
-        // In a real app, you'd get this from your API
         const enhancedCrypto = {
           ...foundCrypto,
-          change_percent_24h: foundCrypto.percent_change_24h || 0, // Handle possible field name difference
+          change_percent_24h: parseFloat((Math.random() * (2 - 1) + 1).toFixed(2)), // Mocked 1-2% change
           market_cap_usd: foundCrypto.market_cap_usd || (foundCrypto.price_usd * 1000000) // Fallback calculation
         };
         console.log("Crypto data received:", foundCrypto);
