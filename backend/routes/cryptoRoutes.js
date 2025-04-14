@@ -12,19 +12,50 @@ const TOP_CRYPTO_IDS = ["BTC", "ETH", "USDT", "BNB", "DOGE", "SOL", "XRP", "ADA"
 
 router.get("/top-cryptos", async (req, res) => {
   try {
+    // Fetch current prices
     const response = await axios.get(
       `https://rest.coinapi.io/v1/assets?filter_asset_id=${TOP_CRYPTO_IDS.join(",")}`,
       { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
     );
 
-    const cryptos = response.data.map((crypto) => ({
-      asset_id: crypto.asset_id,
-      name: crypto.name,
-      price_usd: crypto.price_usd,
-      volume_1day_usd: crypto.volume_1day_usd || 0,
-    }));
+    // For each crypto, fetch 24h historical data
+    const cryptosWithChanges = await Promise.all(
+      response.data.map(async (crypto) => {
+        try {
+          // Get price from 24 hours ago
+          const historicalResponse = await axios.get(
+            `https://rest.coinapi.io/v1/ohlcv/${crypto.asset_id}_USD/history?period_id=1DAY&limit=2`,
+            { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
+          );
+          
+          let change_percent_24h = 0;
+          if (historicalResponse.data && historicalResponse.data.length > 0) {
+            const yesterday_price = historicalResponse.data[0].price_close;
+            change_percent_24h = ((crypto.price_usd - yesterday_price) / yesterday_price) * 100;
+          }
+          
+          return {
+            asset_id: crypto.asset_id,
+            name: crypto.name,
+            price_usd: crypto.price_usd,
+            volume_1day_usd: crypto.volume_1day_usd || 0,
+            change_percent_24h,
+            market_cap_usd: crypto.market_cap_usd || (crypto.price_usd * 21000000) // Fallback calculation for BTC
+          };
+        } catch (err) {
+          return {
+            asset_id: crypto.asset_id,
+            name: crypto.name,
+            price_usd: crypto.price_usd,
+            volume_1day_usd: crypto.volume_1day_usd || 0,
+            change_percent_24h: 0,
+            market_cap_usd: crypto.market_cap_usd || (crypto.price_usd * 21000000) // Fallback calculation for BTC
+          };
+        }
+      })
+    );
 
-    res.status(200).json({ success: true, data: cryptos });
+    res.status(200).json({ success: true, data: cryptosWithChanges });
   } catch (error) {
     console.error("CoinAPI Error:", error.response?.data || error.message);
     res.status(500).json({ success: false, error: "Failed to fetch cryptocurrency data." });
@@ -156,9 +187,9 @@ router.get("/watchlist", authenticateToken, async (req, res) => {
       asset_id: crypto.asset_id,
       name: crypto.name,
       price_usd: crypto.price_usd,
-      percent_change_24h: crypto.change_percent_24h, // <-- real data
+      change_percent_24h: crypto.percent_change_24h, // <-- real data
     }))
-
+    console.log("Raw CoinAPI response for " + crypto.asset_id + ":", crypto);
     res.status(200).json({ success: true, data: cryptos });
   } catch (error) {
     console.error("Error fetching watchlist:", error);
@@ -301,8 +332,30 @@ router.get("/historical/:asset_id", authenticateToken, async (req, res) => {
     };
     
     const period_id = periods[period] || "1DAY";
-    const daysBack = period === "1Y" ? 365 : period === "1M" ? 30 : period === "1W" ? 7 : 1;
-    const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date();
+    let time_start;
+    
+    switch (period) {
+      case "1H":
+        time_start = new Date(now.getTime() - 24 * 60 * 60 * 1000); // last 24 hours
+        break;
+      case "1DAY":
+        time_start = new Date(now.getTime() - limit * 24 * 60 * 60 * 1000); // 'limit' days ago
+        break;
+      case "1W":
+        time_start = new Date(now.getTime() - limit * 7 * 24 * 60 * 60 * 1000); // 'limit' weeks ago
+        break;
+      case "1M":
+        time_start = new Date(now.getTime() - limit * 30 * 24 * 60 * 60 * 1000); // approx months
+        break;
+      case "1Y":
+        time_start = new Date(now.getTime() - limit * 365 * 24 * 60 * 60 * 1000); // approx years
+        break;
+      default:
+        time_start = new Date(now.getTime() - limit * 24 * 60 * 60 * 1000); // fallback
+    }
+    
+    const startDate = time_start.toISOString();
 
     const response = await axios.get(
       `https://rest.coinapi.io/v1/ohlcv/${symbol_id}/history`,
