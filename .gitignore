@@ -1,1 +1,42 @@
-.env
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# === Env Files ===
+*.env
+*.env.*   # catches .env.local, .env.development, etc.
+
+# === Build output ===
+.next/
+dist/
+out/
+
+# === Logs ===
+*.log
+logs/
+output.log
+
+# === System Files ===
+.DS_Store
+Thumbs.db
+
+# === Vscode ===
+.vscode/
+
+# === OS Metadata ===
+.idea/
+*.swp
+
+# === Backend Specific ===
+/backend/output.log
+
+# === Frontend Specific ===
+/frontend/.next/
+/frontend/node_modules/
+/frontend/.env.local
+
+# === Optional Git Hooks ===
+.husky/
