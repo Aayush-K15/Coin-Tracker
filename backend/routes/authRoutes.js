@@ -4,7 +4,7 @@
   const { body, validationResult } = require("express-validator");
   const db = require("../config/db");
   require("dotenv").config();
-
+  const nodemailer = require('nodemailer');
   const router = express.Router();
 
   router.post("/signup", [
@@ -29,9 +29,33 @@
     }
 
     const { name, email, password, dob } = req.body;
+    // Generate 6-digit code
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Store code in DB
+    await db.query(
+      `INSERT INTO email_verifications (email, code, expires_at)
+      VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+      ON DUPLICATE KEY UPDATE code = VALUES(code), expires_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE)`,
+      [email, verificationCode]
+    );
+
+    // Send the email
+    const transporter = nodemailer.createTransport({
+      service: 'Gmail',
+      auth: {
+        user: process.env.EMAIL_USER, // your Gmail or SMTP email
+        pass: process.env.EMAIL_PASS  // app password
+      }
+    });
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Verify your email address',
+      text: `Your verification code is ${verificationCode}. It will expire in 10 minutes.`
+    });
     try {
-      // Check for existing user
       const [existingUser] = await db.query(
         "SELECT id FROM users WHERE email = ?",
         [email]
@@ -44,17 +68,13 @@
           error: "Email is already registered. Please login instead." 
         });
       }
-
-      // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
-      
-      // Insert new user
+    
       const [result] = await db.query(
         "INSERT INTO users (name, email, password, dob) VALUES (?, ?, ?, ?)",
         [name, email, hashedPassword, dob || null]
       );
 
-      // Generate JWT token
       const token = jwt.sign(
         { 
           user_id: result.insertId,
@@ -64,7 +84,6 @@
         { expiresIn: '7d' }
       );
 
-      // Return response with token
       res.status(201).json({
         success: true,
         message: "User registered successfully!",
@@ -87,9 +106,35 @@
       });
     }
   });
+  router.post("/verify-email", [
+    body("email").isEmail(),
+    body("code").isLength({ min: 6, max: 6 }).withMessage("Invalid code")
+  ], async (req, res) => {
+    const { email, code } = req.body;
+  
+    try {
+      const [rows] = await db.query(
+        "SELECT * FROM email_verifications WHERE email = ? AND code = ? AND expires_at > NOW()",
+        [email, code]
+      );
+  
+      if (rows.length === 0) {
+        return res.status(400).json({ success: false, error: "Invalid or expired code." });
+      }
+  
+      // Mark user as verified
+      await db.query("UPDATE users SET email_verified = 1 WHERE email = ?", [email]);
+      await db.query("DELETE FROM email_verifications WHERE email = ?", [email]);
+  
+      res.json({ success: true, message: "Email verified successfully." });
+    } catch (error) {
+      console.error("Verification error:", error);
+      res.status(500).json({ success: false, error: "Verification failed." });
+    }
+  });
+  
 
 
-  // **User Login**
   router.post("/login", [
     body("email").isEmail().withMessage("Valid email is required"),
     body("password").notEmpty().withMessage("Password is required"),
@@ -98,20 +143,21 @@
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { email, password } = req.body;
+    if (!user[0].email_verified) {
+      return res.status(403).json({ error: "Please verify your email before logging in." });
+    }
+    
 
     try {
-      // **Fetch user from database**
       const [user] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
 
       if (user.length === 0) {
         return res.status(401).json({ error: "Invalid email or password." });
       }
 
-      // **Verify password**
       const isMatch = await bcrypt.compare(password, user[0].password);
       if (!isMatch) return res.status(401).json({ error: "Invalid email or password." });
-
-      // **Generate JWT Token**
+ 
       const token = jwt.sign(
         { user_id: user[0].id, email: user[0].email },
         process.env.JWT_SECRET,

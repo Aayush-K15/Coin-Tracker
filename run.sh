@@ -1,1 +1,1 @@
-(cd backend && node server.js &) & (cd frontend && npm run dev)
+(cd backend && npm run dev &) & (cd frontend && npm start)

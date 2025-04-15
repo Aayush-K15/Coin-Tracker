@@ -8,7 +8,15 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { TrendingUp } from "lucide-react"
 import { CryptoSelectionStep } from "@/components/crypto-selection-step"
@@ -32,6 +40,9 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const [isCodeSent, setIsCodeSent] = useState(false)
+  const [isCodeVerified, setIsCodeVerified] = useState(false)
+  const [verificationCode, setVerificationCode] = useState("")
 
   const form = useForm<z.infer<typeof userFormSchema>>({
     resolver: zodResolver(userFormSchema),
@@ -45,8 +56,59 @@ export default function RegisterPage() {
   })
 
   async function onSubmitUserData(values: z.infer<typeof userFormSchema>) {
-    setUserData(values)
-    setStep(2)
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("http://localhost:5001/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: values.name,
+          email: values.email,
+          password: values.password,
+          dob: values.dob || undefined,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to register")
+      }
+
+      setUserData(values)
+      setIsCodeSent(true)
+    } catch (err) {
+      console.error("Signup error:", err)
+      setError(err instanceof Error ? err.message : "An unknown error occurred")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function verifyEmailCode() {
+    try {
+      const response = await fetch("http://localhost:5001/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userData?.email,
+          code: verificationCode,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Invalid code")
+      }
+
+      setIsCodeVerified(true)
+      setStep(2)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to verify code")
+    }
   }
 
   async function onCompleteRegistration(selectedCryptos: string[]) {
@@ -56,31 +118,9 @@ export default function RegisterPage() {
     setError(null)
 
     try {
-      // Register the user
-      const userResponse = await fetch("http://localhost:5001/api/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: userData.name,
-          email: userData.email,
-          password: userData.password,
-          dob: userData.dob || undefined,
-        }),
-      })
-
-      if (!userResponse.ok) {
-        const errorData = await userResponse.json()
-        throw new Error(errorData.error || "Failed to register user")
-      }
-
-      // Login the user to get token
       const loginResponse = await fetch("http://localhost:5001/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: userData.email,
           password: userData.password,
@@ -93,9 +133,7 @@ export default function RegisterPage() {
 
       const { token } = await loginResponse.json()
       localStorage.setItem("token", token)
-      
-      // Add selected cryptos to watchlist
-      console.log("Selected cryptos:", selectedCryptos)
+
       await fetch("http://localhost:5001/api/crypto/watchlist/add-multiple", {
         method: "POST",
         headers: {
@@ -107,7 +145,6 @@ export default function RegisterPage() {
         }),
       })
 
-      // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
       console.error("Registration error:", err)
@@ -159,12 +196,47 @@ export default function RegisterPage() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="john@example.com" {...field} />
+                        <div className="flex gap-2">
+                          <Input
+                            type="email"
+                            placeholder="john@example.com"
+                            {...field}
+                            disabled={isCodeSent}
+                          />
+                          {!isCodeSent && (
+                            <Button
+                              type="button"
+                              onClick={() => form.handleSubmit(onSubmitUserData)()}
+                              disabled={!form.getValues("email")}
+                            >
+                              Send Code
+                            </Button>
+                          )}
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {isCodeSent && !isCodeVerified && (
+                  <div className="space-y-2">
+                    <FormLabel>Enter verification code</FormLabel>
+                    <Input
+                      placeholder="6-digit code"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                      maxLength={6}
+                    />
+                    <Button
+                      type="button"
+                      onClick={verifyEmailCode}
+                      disabled={verificationCode.length !== 6}
+                    >
+                      Verify Code
+                    </Button>
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -215,7 +287,9 @@ export default function RegisterPage() {
                 <Button variant="outline" asChild>
                   <Link href="/login">I already have an account</Link>
                 </Button>
-                <Button type="submit">Continue</Button>
+                <Button type="submit" disabled={!isCodeVerified}>
+                  Continue
+                </Button>
               </CardFooter>
             </form>
           </Form>

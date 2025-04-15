@@ -7,28 +7,24 @@ const authenticateToken = require("../middleware/auth");
 
 const router = express.Router();
 
-// Fetch only the top cryptos
 const TOP_CRYPTO_IDS = ["BTC", "ETH", "USDT", "BNB", "DOGE", "SOL", "XRP", "ADA", "AVAX", "TRX"];
 
 router.get("/top-cryptos", async (req, res) => {
   try {
-    // Fetch current prices
     const response = await axios.get(
       `https://rest.coinapi.io/v1/assets?filter_asset_id=${TOP_CRYPTO_IDS.join(",")}`,
       { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
     );
 
-    // For each crypto, fetch 24h historical data
     const cryptosWithChanges = await Promise.all(
       response.data.map(async (crypto) => {
         try {
-          // Get price from 24 hours ago
           const historicalResponse = await axios.get(
             `https://rest.coinapi.io/v1/ohlcv/${crypto.asset_id}_USD/history?period_id=1DAY&limit=2`,
             { headers: { "X-CoinAPI-Key": process.env.COINAPI_KEY } }
           );
           
-          let change_percent_24h = "0.77%";
+          let change_percent_24h = 0;
           if (historicalResponse.data && historicalResponse.data.length > 0) {
             const yesterday_price = historicalResponse.data[0].price_close;
             change_percent_24h = ((crypto.price_usd - yesterday_price) / yesterday_price) * 100;
