@@ -291,4 +291,4 @@ If you encounter any issues or have questions:
 
 ---
 
-Built with ❤️ using Next.js and Node.js
+Built with ❤️ by Aayush Kapoor
