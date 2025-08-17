@@ -35,4 +35,4 @@ fi
 # Run DB setup
 echo "📦 Running initial DB setup..."
 node backend/config/dbSetup.js
-(cd backend && npm run dev &) & (cd frontend && npm start)
+(cd backend && node server.js &) & (cd frontend && npm start)
